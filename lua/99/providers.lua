@@ -159,7 +159,7 @@ end
 
 --- @return string
 function OpenCodeProvider._get_default_model()
-  return "opencode/claude-sonnet-4-5"
+  return "opencode/big-pickle"
 end
 
 --- @class ClaudeCodeProvider : _99.Providers.BaseProvider
