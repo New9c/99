@@ -338,7 +338,6 @@ end
 
 --- @param opts _99.window.CaptureInputOpts
 function M.capture_input(opts)
-  _ = opts
   M.clear_active_popups()
 
   local config = create_centered_window()
@@ -419,6 +418,10 @@ function M.clear_active_popups()
     window_close(window)
   end
   M.active_windows = {}
+end
+
+function M.status_window()
+  M.clear_active_popups()
 end
 
 return M
