@@ -5,11 +5,7 @@ local M = {}
 --- @return string
 function M.random_file(dir)
   local directory = dir or (vim.uv.cwd() .. "/tmp")
-  return string.format(
-    "%s/99-%d",
-    directory,
-    math.floor(math.random() * 10000)
-  )
+  return string.format("%s/99-%d", directory, math.floor(math.random() * 10000))
 end
 
 return M
