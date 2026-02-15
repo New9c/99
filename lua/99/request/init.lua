@@ -81,8 +81,10 @@ end
 --- @param obs _99.Providers.Observer | nil
 local function observer_from_request(r, obs)
   return {
+    on_start = obs and obs.on_start or function() end,
     on_complete = function(status, res)
       r.state = status
+      r.context._99:finish_request(r.context, status)
       if obs then
         obs.on_complete(status, res)
       end
@@ -108,7 +110,6 @@ function Request:start(observer)
   )
   self.state = "requesting"
 
-  self.context._99:track_request(self.context)
   self.context:finalize()
   for _, content in ipairs(self.context.ai_context) do
     self:add_prompt_content(content)
@@ -117,7 +118,11 @@ function Request:start(observer)
   local prompt = table.concat(self._content, "\n")
   self.context:save_prompt(prompt)
   self.logger:debug("start", "prompt", prompt)
-  self.provider:make_request(prompt, self, observer_from_request(self, observer))
+  self.provider:make_request(
+    prompt,
+    self,
+    observer_from_request(self, observer)
+  )
 end
 
 return Request

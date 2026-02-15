@@ -54,17 +54,18 @@ end
 --- @class _99.RequestEntry.Data.Visual
 --- @field type "visual"
 
+---
 --- @alias _99.RequestEntry.Data _99.RequestEntry.Data.Search | _99.RequestEntry.Data.Tutorial | _99.RequestEntry.Data.Visual
 
 --- @class _99.RequestEntry
 --- @field id number
 --- @field operation string
---- @field status "running" | "success" | "failed" | "cancelled"
+--- @field status _99.Request.State
 --- @field filename string
 --- @field lnum number
 --- @field col number
 --- @field started_at number
---- @field operation_data _99.RequestEntry.Data
+--- @field operation_data _99.RequestEntry.Data | nil
 
 --- @class _99.ActiveRequest
 --- @field clean_up _99.Cleanup
@@ -81,9 +82,9 @@ end
 --- @field display_errors boolean
 --- @field auto_add_skills boolean
 --- @field provider_override _99.Providers.BaseProvider?
---- @field __active_requests table<number, _99.ActiveRequest>
 --- @field __view_log_idx number
 --- @field __tutorials _99.RequestEntry.Data.Tutorial[]
+--- @field __searches _99.RequestEntry.Data.Search[]
 --- @field __request_history _99.RequestEntry[]
 --- @field __request_by_id table<number, _99.RequestEntry>
 
@@ -99,8 +100,8 @@ local function create_99_state()
     display_errors = false,
     provider_override = nil,
     auto_add_skills = false,
-    __active_requests = {},
     __tutorials = {},
+    __searches = {},
     __view_log_idx = 1,
     __request_history = {},
     __request_by_id = {},
@@ -139,10 +140,10 @@ end
 --- @field provider_override _99.Providers.BaseProvider?
 --- @field auto_add_skills boolean
 --- @field rules _99.Agents.Rules
---- @field __active_requests table<number, _99.ActiveRequest>
 --- @field __view_log_idx number
 --- @field __request_history _99.RequestEntry[]
 --- @field __tutorials _99.RequestEntry.Data.Tutorial[]
+--- @field __searches _99.RequestEntry.Data.Search[]
 --- @field __request_by_id table<number, _99.RequestEntry>
 --- @field __active_marks _99.Mark[]
 local _99_State = {}
@@ -170,29 +171,41 @@ function _99_State:refresh_rules()
 end
 
 --- @param context _99.RequestContext
+--- @param clean_up fun(): nil
 --- @return _99.RequestEntry
-function _99_State:track_request(context)
+function _99_State:track_request(context, clean_up)
   local point = context.range and context.range.start or Point:from_cursor()
   local entry = {
     id = context.xid,
+    clean_up = clean_up,
     operation = context.operation or "request",
     status = "running",
     filename = context.full_path,
     lnum = point.row,
     col = point.col,
     started_at = time.now(),
+    operation_data = nil,
   }
   table.insert(self.__request_history, entry)
   self.__request_by_id[entry.id] = entry
   return entry
 end
 
---- @param id number
+--- @param context _99.RequestContext
 --- @param status "success" | "failed" | "cancelled"
-function _99_State:finish_request(id, status)
+function _99_State:finish_request(context, status)
+  local id = context.xid
   local entry = self.__request_by_id[id]
   if entry then
     entry.status = status
+  end
+  if entry.operation == "success" and entry.operation_data then
+    local data = entry.operation_data
+    if data.type == "tutorial" then
+      table.insert(self.__tutorials, data)
+    elseif data.type == "search" then
+      table.insert(self.__searches, data)
+    end
   end
 end
 
@@ -209,17 +222,6 @@ function _99_State:add_data(id, data)
     "the data type is not the same as the operation"
   )
   entry.operation_data = data
-end
-
---- @param id number
-function _99_State:remove_request(id)
-  for i, entry in ipairs(self.__request_history) do
-    if entry.id == id then
-      table.remove(self.__request_history, i)
-      break
-    end
-  end
-  self.__request_by_id[id] = nil
 end
 
 --- @return number
@@ -243,22 +245,8 @@ function _99_State:clear_previous_requests()
     end
   end
   self.__request_history = keep
-end
-
-local _active_request_id = 0
----@param clean_up _99.Cleanup
----@param request_id number
----@param name string
----@return number
-function _99_State:add_active_request(clean_up, request_id, name)
-  _active_request_id = _active_request_id + 1
-  Logger:debug("adding active request", "id", _active_request_id)
-  self.__active_requests[_active_request_id] = {
-    clean_up = clean_up,
-    request_id = request_id,
-    name = name,
-  }
-  return _active_request_id
+  self.__searches = {}
+  self.__tutorials = {}
 end
 
 --- @param mark _99.Mark
@@ -268,29 +256,12 @@ end
 
 function _99_State:active_request_count()
   local count = 0
-  for _ in pairs(self.__active_requests) do
-    count = count + 1
+  for _, r in pairs(self.__request_history) do
+    if r.status == "running" then
+      count = count + 1
+    end
   end
   return count
-end
-
----@param id number
-function _99_State:remove_active_request(id)
-  local logger = Logger:set_id(id)
-  local r = self.__active_requests[id]
-  logger:assert(r, "there is no active request for id.  implementation broken")
-  logger:debug("removing active request")
-  self.__active_requests[id] = nil
-
-  local entry = self.__request_history[id]
-  if entry.operation == "tutorial" and entry.status == "success" then
-    local data = entry.operation_data
-    logger:assert(
-      data.type == "tutorial",
-      "data type tutorial expected for request tutorial"
-    )
-    table.insert(self.__tutorials, data)
-  end
 end
 
 local _99_state = _99_State.new()
@@ -464,11 +435,7 @@ function _99.next_request_logs()
 end
 
 function _99.stop_all_requests()
-  for _, active in pairs(_99_state.__active_requests) do
-    _99_state:remove_request(active.request_id)
-    active.clean_up()
-  end
-  _99_state.__active_requests = {}
+  error("implement")
 end
 
 function _99.clear_all_marks()
@@ -542,9 +509,6 @@ local function show_in_flight_requests()
       local lines = {
         throb .. " requests(" .. tostring(count) .. ") " .. throb,
       }
-      for _, r in pairs(_99_state.__active_requests) do
-        table.insert(lines, r.name)
-      end
 
       Window.resize(win, #lines[1], #lines)
       vim.api.nvim_buf_set_lines(win.buf_id, 0, 1, false, lines)

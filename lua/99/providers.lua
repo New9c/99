@@ -2,6 +2,7 @@
 --- @field on_stdout fun(line: string): nil
 --- @field on_stderr fun(line: string): nil
 --- @field on_complete fun(status: _99.Request.ResponseState, res: string): nil
+--- @field on_start fun(): nil
 
 --- @param fn fun(...: any): nil
 --- @return fun(...: any): nil
@@ -50,6 +51,8 @@ end
 --- @param request _99.Request
 --- @param observer _99.Providers.Observer
 function BaseProvider:make_request(query, request, observer)
+  observer.on_start()
+
   local logger = request.logger:set_area(self:_get_provider_name())
   logger:debug("make_request", "tmp_file", request.context.tmp_file)
 

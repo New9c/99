@@ -1,5 +1,4 @@
 local helpers = require("99.extensions.agents.helpers")
-local Logger = require("99.logger.logger")
 local M = {}
 
 --- @class _99.Agents.Rule

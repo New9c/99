@@ -1,9 +1,10 @@
 local Completions = require("99.extensions.completions")
+local Agents = require("99.extensions.agents")
 
 --- @param context _99.RequestContext
 --- @param prompt string
 --- @param opts _99.ops.Opts
---- @return string, _99.Completion
+--- @return string, _99.Reference[]
 return function(context, prompt, opts)
   local user_prompt = opts.additional_prompt
   assert(
@@ -18,7 +19,12 @@ return function(context, prompt, opts)
   local additional_rules = opts.additional_rules
   if additional_rules then
     for _, r in ipairs(additional_rules) do
-      table.insert(refs, r)
+      local content = Agents.get_rule_content(r)
+      if content then
+        table.insert(refs, {
+          content = content,
+        })
+      end
     end
   end
 

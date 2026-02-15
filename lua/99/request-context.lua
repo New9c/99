@@ -15,6 +15,7 @@ local random_file = utils.random_file
 --- @field xid number
 --- @field range _99.Range?
 --- @field operation string?
+--- @field clean_ups (fun(): nil)[]
 --- @field _99 _99.State
 local RequestContext = {}
 RequestContext.__index = RequestContext
@@ -38,6 +39,7 @@ function RequestContext.from_current_buffer(_99, xid)
 
   return setmetatable({
     _99 = _99,
+    clean_ups = {},
     md_file_names = mds,
     ai_context = {},
     tmp_file = random_file(),
@@ -56,40 +58,6 @@ end
 function RequestContext:add_md_file_name(md_file_name)
   table.insert(self.md_file_names, md_file_name)
   return self
-end
-
---- TODO: Dedupe any rules that have already been added
---- @param rules (_99.Agents.Rule | string)[]
-function RequestContext:add_agent_rules(rules)
-  for _, rule in ipairs(rules) do
-    -- Handle both string paths and rule objects
-    self.logger:debug("adding custom rule to agent", "rule", rule)
-    local file_path = rule.absolute_path or rule.path
-    local ok, file = pcall(io.open, file_path, "r")
-    if ok and file then
-      local content = file:read("*a")
-      file:close()
-      self.logger:info(
-        "Context#adding agent file to the context",
-        "agent_path",
-        rule.path
-      )
-      table.insert(
-        self.ai_context,
-        string.format(
-          [[
-<%s>
-%s
-</%s>]],
-          rule.name,
-          content,
-          rule.name
-        )
-      )
-    else
-      self.logger:debug("unable to read agent rule", "rule", rule)
-    end
-  end
 end
 
 --- @param refs _99.Reference[]

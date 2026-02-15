@@ -1,6 +1,9 @@
 local Request = require("99.request")
-local make_clean_up = require("99.ops.clean-up")
 local make_prompt = require("99.ops.make-prompt")
+local CleanUp = require("99.ops.clean-up")
+
+local make_clean_up = CleanUp.make_clean_up
+local make_observer = CleanUp.make_observer
 
 --- @class _99.Search.Result
 --- @field filename string
@@ -65,39 +68,28 @@ local function search(context, opts)
 
   logger:debug("search", "with opts", opts.additional_prompt)
 
-  local clean_up = make_clean_up(context, "Search", function()
+  local clean_up = make_clean_up(function()
     request:cancel()
   end)
 
-  local prompt, rules, refs =
+  local prompt, refs =
     make_prompt(context, context._99.prompts.prompts.semantic_search(), opts)
 
-  context:add_agent_rules(rules)
   request:add_prompt_content(prompt)
   context:add_references(refs)
 
-  request:start({
-    on_complete = function(status, response)
-      vim.schedule(clean_up)
-      if status == "cancelled" then
-        logger:debug("request cancelled for search")
-      elseif status == "failed" then
-        logger:error(
-          "request failed for search",
-          "error response",
-          response or "no response provided"
-        )
-      elseif status == "success" then
-        create_search_locations(context._99, response)
-      end
-    end,
-    on_stdout = function(line)
-      --- TODO: i need to figure out how to surface this information
-      _ = line
-    end,
-    on_stderr = function(line)
-      logger:debug("visual_selection#on_stderr received", "line", line)
-    end,
-  })
+  request:start(make_observer(context, clean_up, function(status, response)
+    if status == "cancelled" then
+      logger:debug("request cancelled for search")
+    elseif status == "failed" then
+      logger:error(
+        "request failed for search",
+        "error response",
+        response or "no response provided"
+      )
+    elseif status == "success" then
+      create_search_locations(context._99, response)
+    end
+  end))
 end
 return search

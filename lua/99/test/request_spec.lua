@@ -26,6 +26,7 @@ describe("request test", function()
 
     eq("ready", request.state)
 
+    eq(0, state:active_request_count())
     request:start({
       on_complete = function(status, _)
         finished_called = true
@@ -34,12 +35,14 @@ describe("request test", function()
       on_stdout = function() end,
       on_stderr = function() end,
     })
+    eq(1, state:active_request_count())
 
     eq("requesting", request.state)
 
     p:resolve("success", "    return 'implemented!'")
     assert.is_true(finished_called)
 
+    eq(0, state:active_request_count())
     eq("success", request.state)
     eq("success", finished_status)
   end)

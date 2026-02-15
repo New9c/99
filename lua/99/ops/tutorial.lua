@@ -1,7 +1,9 @@
 local Request = require("99.request")
-local make_clean_up = require("99.ops.clean-up")
+local CleanUp = require("99.ops.clean-up")
 local make_prompt = require("99.ops.make-prompt")
 
+local make_clean_up = CleanUp.make_clean_up
+local make_observer = CleanUp.make_observer
 --- @class _99.Tutorial.Result
 
 --- @param context _99.RequestContext
@@ -14,37 +16,29 @@ local function tutorial(context, opts)
 
   local request = Request.new(context)
 
-  local clean_up = make_clean_up(context, "Search", function()
+  local clean_up = make_clean_up(function()
     request:cancel()
   end)
 
-  local prompt, rules =
+  local prompt, refs =
     make_prompt(context, context._99.prompts.prompts.tutorial(), opts)
-  context:add_agent_rules(rules)
+  context:add_references(refs)
   request:add_prompt_content(prompt)
 
-  request:start({
-    on_complete = function(status, response)
-      vim.schedule(clean_up)
-      if status == "cancelled" then
-        logger:debug("cancelled")
-      elseif status == "failed" then
-        logger:error(
-          "failed",
-          "error response",
-          response or "no response provided"
-        )
-      elseif status == "success" then
-        error("what the hell")
-      end
-    end,
-    on_stdout = function(line)
-      --- TODO: i need to figure out how to surface this information
-      _ = line
-    end,
-    on_stderr = function(line)
-      logger:debug("on_stderr", "line", line)
-    end,
-  })
+  request:start(make_observer(context, clean_up, function(status, response)
+    vim.schedule(clean_up)
+    if status == "cancelled" then
+      logger:debug("cancelled")
+    elseif status == "failed" then
+      logger:error(
+        "failed",
+        "error response",
+        response or "no response provided"
+      )
+    elseif status == "success" then
+      error("what the hell")
+    end
+  end))
+
 end
 return tutorial

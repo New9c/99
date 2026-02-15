@@ -2,8 +2,11 @@ local Request = require("99.request")
 local RequestStatus = require("99.ops.request_status")
 local Mark = require("99.ops.marks")
 local geo = require("99.geo")
-local make_clean_up = require("99.ops.clean-up")
 local make_prompt = require("99.ops.make-prompt")
+local CleanUp = require("99.ops.clean-up")
+
+local make_clean_up = CleanUp.make_clean_up
+local make_observer = CleanUp.make_observer
 
 local Range = geo.Range
 local Point = geo.Point
@@ -37,7 +40,7 @@ local function over_range(context, range, opts)
     top_mark
   )
   local bottom_status = RequestStatus.new(250, 1, "Implementing", bottom_mark)
-  local clean_up = make_clean_up(context, "Visual", function()
+  local clean_up = make_clean_up(function()
     top_status:stop()
     bottom_status:stop()
     context:clear_marks()
@@ -45,17 +48,15 @@ local function over_range(context, range, opts)
   end)
 
   local system_cmd = context._99.prompts.prompts.visual_selection(range)
-  local prompt, rules, refs = make_prompt(context, system_cmd, opts)
+  local prompt, refs = make_prompt(context, system_cmd, opts)
 
-  context:add_agent_rules(rules)
   request:add_prompt_content(prompt)
   context:add_references(refs)
 
   top_status:start()
   bottom_status:start()
-  request:start({
+  request:start(make_observer(context, clean_up, {
     on_complete = function(status, response)
-      vim.schedule(clean_up)
       if status == "cancelled" then
         logger:debug("request cancelled for visual selection, removing marks")
       elseif status == "failed" then
@@ -90,10 +91,7 @@ local function over_range(context, range, opts)
         top_status:push(line)
       end
     end,
-    on_stderr = function(line)
-      logger:debug("visual_selection#on_stderr received", "line", line)
-    end,
-  })
+  }))
 end
 
 return over_range
